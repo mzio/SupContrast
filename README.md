@@ -1,11 +1,13 @@
 # SupContrast: Supervised Contrastive Learning Commands
 
 Example commands for ISIC and CelebA:
+
+Number of epochs may need to be tuned? It's just the same number for training an ERM model right now.
 ```
 # ISIC
-python main_group_inference.py --batch_size 16 --learning_rate 1e-3 --temp 0.1 --cosine --dataset isic --method LSpread --a_lc 1.0 --a_spread 1.0 --trial 1 --weight_decay 1e-3
+python main_group_inference.py --batch_size 16 --learning_rate 1e-3 --temp 0.1 --cosine --dataset isic --method LSpread --a_lc 1.0 --a_spread 1.0 --trial 1 --weight_decay 1e-3 --save_freq 5 --epochs 20
 
-python main_group_inference.py --batch_size 16 --learning_rate 5e-4 --temp 0.1 --cosine --dataset isic --method LSpread --a_lc 1.0 --a_spread 1.0 --trial 1 --weight_decay 1e-3
+python main_group_inference.py --batch_size 16 --learning_rate 5e-4 --temp 0.1 --cosine --dataset isic --method LSpread --a_lc 1.0 --a_spread 1.0 --trial 1 --weight_decay 1e-3 --save_freq 5 --epochs 20
 
 Hparam sweep:
 lr: [1e-3, 5e-4]
@@ -13,13 +15,13 @@ wd: [1e-3]
 
 # CelebA
 
-python main_group_inference.py --batch_size 128  --learning_rate 1e-4 --temp 0.1 --cosine --dataset celebA --method LSpread --a_lc 1.0 --a_spread 1.0 --trial 1 --weight_decay 1e-4
+python main_group_inference.py --batch_size 128  --learning_rate 1e-4 --temp 0.1 --cosine --dataset celebA --method LSpread --a_lc 1.0 --a_spread 1.0 --trial 1 --weight_decay 1e-4 --save_freq 10 --epochs 50
 
-python main_group_inference.py --batch_size 128  --learning_rate 1e-4 --temp 0.1 --cosine --dataset celebA --method LSpread --a_lc 1.0 --a_spread 1.0 --trial 1 --weight_decay 1e-1
+python main_group_inference.py --batch_size 128  --learning_rate 1e-4 --temp 0.1 --cosine --dataset celebA --method LSpread --a_lc 1.0 --a_spread 1.0 --trial 1 --weight_decay 1e-1 --save_freq 10 --epochs 50
 
-python main_group_inference.py --batch_size 128  --learning_rate 1e-5 --temp 0.1 --cosine --dataset celebA --method LSpread --a_lc 1.0 --a_spread 1.0 --trial 1 --weight_decay 1e-4
+python main_group_inference.py --batch_size 128  --learning_rate 1e-5 --temp 0.1 --cosine --dataset celebA --method LSpread --a_lc 1.0 --a_spread 1.0 --trial 1 --weight_decay 1e-4 --save_freq 10 --epochs 50
 
-python main_group_inference.py --batch_size 128  --learning_rate 1e-5 --temp 0.1 --cosine --dataset celebA --method LSpread --a_lc 1.0 --a_spread 1.0 --trial 1 --weight_decay 1e-1
+python main_group_inference.py --batch_size 128  --learning_rate 1e-5 --temp 0.1 --cosine --dataset celebA --method LSpread --a_lc 1.0 --a_spread 1.0 --trial 1 --weight_decay 1e-1 --save_freq 10 --epochs 50
 
 Hparam sweep:
 lr: [1e-4, 1e-5]
