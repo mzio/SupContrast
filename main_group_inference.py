@@ -44,7 +44,7 @@ def parse_option():
 
     parser.add_argument('--print_freq', type=int, default=10,
                         help='print frequency')
-    parser.add_argument('--save_freq', type=int, default=50,
+    parser.add_argument('--save_freq', type=int, default=10,
                         help='save frequency')
     parser.add_argument('--batch_size', type=int, default=256,
                         help='batch_size')
@@ -276,8 +276,8 @@ def set_loader(opt):
         # Modified train_transform()
         # - No color jitter or grayscaling
         train_transform = transforms.Compose([
+            transforms.RandomResizedCrop(size=orig_min_dim, scale=(0.7, 1.)),  # Added
             transforms.CenterCrop(orig_min_dim),
-            transforms.RandomResizedCrop(size=opt.size, scale=(0.7, 1.)),  # Added
             transforms.Resize(target_resolution),  
             transforms.RandomHorizontalFlip(),  # Added
             transforms.ToTensor(),
@@ -311,7 +311,7 @@ def set_loader(opt):
         
         # No additional augmentation
         transform_list = [
-            transforms.RandomResizedCrop(size=opt.size, scale=(0.7, 1.)),  # Added
+            transforms.RandomResizedCrop(size=ISICDataset.img_resolution, scale=(0.7, 1.)),  # Added
             transforms.Resize(ISICDataset.img_resolution),
             transforms.CenterCrop(ISICDataset.img_resolution),
             transforms.RandomHorizontalFlip(),  # Added
@@ -457,40 +457,7 @@ def train(train_loader, model, criterion, optimizer, epoch, opt, embedding_loade
             
             # Debugging:
             if opt.trial == '42':
-                # Compute group indices too
-                # 1st compute embeddings
-                print_str = f'-' * 5 + ' [TEST] Inferring subgroups ' + '-' * 5
-                print(print_str)
-                embeddings = compute_embeddings(embedding_loader, model, opt)
-                # 2nd do dim reduction
-                n_components = 2
-                umap_seed = 42
-
-                print(f'> Computing UMAP')
-                umap_embeddings, all_indices = compute_umap_embeddings(embeddings, 
-                                                                       n_components=n_components,
-                                                                       seed=umap_seed)
-                # Then save group predictions
-                dataset = embedding_loader.dataset
-                cluster_method = 'kmeans'
-                n_clusters = 2
-                save_dir = f'./group_predictions/{opt.dataset}'
-                save_name = f'{opt.model_name}-e={epoch}-cm={cluster_method}-nc={n_clusters}-umap_nc={n_components}_s={umap_seed}.npy'
-
-                print(f'> Clustering groups')
-                pred_group_labels, prfs = compute_group_labels(umap_embeddings,
-                                                               all_indices,
-                                                               embedding_loader,
-                                                               cluster_method,
-                                                               n_clusters,
-                                                               save_name,
-                                                               save_dir=save_dir,
-                                                               verbose=True,
-                                                               norm_cost_matrix=True,
-                                                               save=True,
-                                                               seed=umap_seed)
-                model.train()
-                model = model.to(opt.device)
+                return losses.avg  # Testing
             sys.stdout.flush()
 
     return losses.avg
@@ -534,24 +501,25 @@ def main():
             # 1st compute embeddings
             print_str = f'-' * 5 + ' Inferring subgroups ' + '-' * 5
             print(print_str)
-            embeddings = compute_embeddings(embedding_loader, model)
+            embeddings = compute_embeddings(embedding_loader, model, opt)
             # 2nd do dim reduction
             n_components = 2
             umap_seed = 42
-            
+
             print(f'> Computing UMAP')
-            umap_embeddings, _ = compute_umap_embeddings(embeddings, 
-                                                         n_components=n_components,
-                                                         seed=umap_seed)
+            umap_embeddings, all_indices = compute_umap_embeddings(embeddings, 
+                                                                   n_components=n_components,
+                                                                   seed=umap_seed)
             # Then save group predictions
             dataset = embedding_loader.dataset
             cluster_method = 'kmeans'
             n_clusters = 2
             save_dir = f'./group_predictions/{opt.dataset}'
-            save_name = f'{opt.model_name}-cm={cluster_method}-nc={n_clusters}-umap_nc={n_components}_s={umap_seed}-e={epoch}.npy'
-            
+            save_name = f'{opt.model_name}-e={epoch}-cm={cluster_method}-nc={n_clusters}-umap_nc={n_components}_s={umap_seed}.npy'
+
             print(f'> Clustering groups')
             pred_group_labels, prfs = compute_group_labels(umap_embeddings,
+                                                           all_indices,
                                                            embedding_loader,
                                                            cluster_method,
                                                            n_clusters,
