@@ -508,15 +508,25 @@ def main():
 
             print(f'> Computing UMAP')
             umap_embeddings, all_indices = compute_umap_embeddings(embeddings, 
+<<<<<<< HEAD
                                                                    n_components=n_components,
                                                                    seed=umap_seed)
+=======
+                                                         n_components=n_components,
+                                                         seed=umap_seed)
+>>>>>>> ff46718a0275a55c43c715ccdf93f2c6b88d124a
             # Then save group predictions
             dataset = embedding_loader.dataset
             cluster_method = 'kmeans'
             n_clusters = 2
             save_dir = f'./group_predictions/{opt.dataset}'
+<<<<<<< HEAD
             save_name = f'{opt.model_name}-e={epoch}-cm={cluster_method}-nc={n_clusters}-umap_nc={n_components}_s={umap_seed}.npy'
 
+=======
+            save_name = f'{opt.model_name}-cm={cluster_method}-nc={n_clusters}-umap_nc={n_components}_s={umap_seed}-e={epoch}'
+            
+>>>>>>> ff46718a0275a55c43c715ccdf93f2c6b88d124a
             print(f'> Clustering groups')
             pred_group_labels, prfs = compute_group_labels(umap_embeddings,
                                                            all_indices,
