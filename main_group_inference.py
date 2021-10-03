@@ -14,9 +14,6 @@ import torch.backends.cudnn as cudnn
 import torchvision
 from torchvision import transforms
 # Because of the following
-from datasets.waterbirds import load_waterbirds
-from datasets.celebA import load_celeba, CelebA
-from datasets.isic import load_isic, get_transform_ISIC, ISICDataset
 
 from util import TwoCropTransform, AverageMeter
 from util import adjust_learning_rate, warmup_learning_rate
@@ -24,6 +21,15 @@ from util import set_optimizer, save_model
 from networks.resnet_big import SupConResNet
 from losses import SupConLoss, LabeledContrastiveLoss
 
+# New imports
+## Data
+from datasets.waterbirds import load_waterbirds
+from datasets.celebA import load_celeba, CelebA
+from datasets.isic import load_isic, get_transform_ISIC, ISICDataset
+
+## Computing embeddings, clustering, inferring groups
+from embeddings import compute_umap_embeddings, compute_embeddings
+from groups import compute_group_labels
 
 
 try:
@@ -207,7 +213,7 @@ def set_loader(opt):
         args.confounder_names = ['forest2water2']
         args.image_mean = np.mean([0.485, 0.456, 0.406])
         args.image_std = np.mean([0.229, 0.224, 0.225])
-        args.augment_data = True
+        args.augment_data = False
         args.train_classes = ['landbirds', 'waterbirds']
         if args.dataset == 'waterbirds_r':
             args.train_classes = ['land', 'water']
@@ -234,8 +240,10 @@ def set_loader(opt):
         train_loader, _, _ = load_waterbirds(args,
                                              train_shuffle=True,
                                              train_transform=TwoCropTransform(train_transform))
+        embedding_dataloader, _, _ = load_waterbirds(args,
+                                                     train_shuffle=False)
         
-        return train_loader
+        return train_loader, embedding_dataloader
     elif opt.dataset == 'celebA':
         args = opt
         args.root_dir = '/dfs/scratch0/nims/CelebA/celeba/'  # <- Change to dataset location
@@ -281,8 +289,10 @@ def set_loader(opt):
         train_loader, _, _ = load_celeba(args,
                                          train_shuffle=True,
                                          train_transform=TwoCropTransform(train_transform))
+        embedding_loader, _, _ = load_celeba(args,
+                                             train_shuffle=False)
         
-        return train_loader
+        return train_loader, embedding_loader
     
     elif opt.dataset == 'isic':
         args = opt
@@ -312,13 +322,26 @@ def set_loader(opt):
         ]
         transform = transforms.Compose(transform_list)
         
+        test_transform_list = [
+            transforms.Resize(ISICDataset.img_resolution),
+            transforms.CenterCrop(ISICDataset.img_resolution),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=ISICDataset.img_norm['mean'],
+                                 std=ISICDataset.img_norm['std'])
+        ]
+        test_transform = transforms.Compose(test_transform_list)
+        
         # load_isic(args, task_names=['patch'], train_shuffle=True, 
         #           augment=False, autoaugment=False)
         train_loader, _, _ = load_isic(args,
                                        train_shuffle=True,
                                        train_transform=TwoCropTransform(transform),
                                        eval_transform=transform)
-        return train_loader
+        embedding_loader, _, _ = load_isic(args,
+                                           train_shuffle=False,
+                                           train_transform=test_transform)
+        
+        return train_loader, embedding_loader
         
         
         
@@ -361,16 +384,17 @@ def set_model(opt):
         model = apex.parallel.convert_syncbn_model(model)
 
     if torch.cuda.is_available():
+        opt.device = torch.device('cuda')
         if torch.cuda.device_count() > 1:
             model.encoder = torch.nn.DataParallel(model.encoder)
-        model = model.cuda()
-        criterion = criterion.cuda()
+        model = model.to(opt.device)
+        criterion = criterion.to(opt.device)
         cudnn.benchmark = True
 
     return model, criterion
 
 
-def train(train_loader, model, criterion, optimizer, epoch, opt):
+def train(train_loader, model, criterion, optimizer, epoch, opt, embedding_loader):
     """one epoch training"""
     model.train()
 
@@ -429,6 +453,44 @@ def train(train_loader, model, criterion, optimizer, epoch, opt):
                   'loss {loss.val:.3f} ({loss.avg:.3f})'.format(
                    epoch, idx + 1, len(train_loader), batch_time=batch_time,
                    data_time=data_time, loss=losses))
+            
+            
+            # Debugging:
+            if opt.trial == '42':
+                # Compute group indices too
+                # 1st compute embeddings
+                print_str = f'-' * 5 + ' [TEST] Inferring subgroups ' + '-' * 5
+                print(print_str)
+                embeddings = compute_embeddings(embedding_loader, model, opt)
+                # 2nd do dim reduction
+                n_components = 2
+                umap_seed = 42
+
+                print(f'> Computing UMAP')
+                umap_embeddings, all_indices = compute_umap_embeddings(embeddings, 
+                                                                       n_components=n_components,
+                                                                       seed=umap_seed)
+                # Then save group predictions
+                dataset = embedding_loader.dataset
+                cluster_method = 'kmeans'
+                n_clusters = 2
+                save_dir = f'./group_predictions/{opt.dataset}'
+                save_name = f'{opt.model_name}-e={epoch}-cm={cluster_method}-nc={n_clusters}-umap_nc={n_components}_s={umap_seed}.npy'
+
+                print(f'> Clustering groups')
+                pred_group_labels, prfs = compute_group_labels(umap_embeddings,
+                                                               all_indices,
+                                                               embedding_loader,
+                                                               cluster_method,
+                                                               n_clusters,
+                                                               save_name,
+                                                               save_dir=save_dir,
+                                                               verbose=True,
+                                                               norm_cost_matrix=True,
+                                                               save=True,
+                                                               seed=umap_seed)
+                model.train()
+                model = model.to(opt.device)
             sys.stdout.flush()
 
     return losses.avg
@@ -438,7 +500,7 @@ def main():
     opt = parse_option()
 
     # build data loader
-    train_loader = set_loader(opt)
+    train_loader, embedding_loader = set_loader(opt)
 
     # build model and criterion
     model, criterion = set_model(opt)
@@ -455,7 +517,7 @@ def main():
 
         # train for one epoch
         time1 = time.time()
-        loss = train(train_loader, model, criterion, optimizer, epoch, opt)
+        loss = train(train_loader, model, criterion, optimizer, epoch, opt, embedding_loader)
         time2 = time.time()
         print('epoch {}, total time {:.2f}'.format(epoch, time2 - time1))
 
@@ -467,6 +529,40 @@ def main():
             save_file = os.path.join(
                 opt.save_folder, 'ckpt_epoch_{epoch}.pth'.format(epoch=epoch))
             save_model(model, optimizer, opt, epoch, save_file)
+            
+            # Compute group indices too
+            # 1st compute embeddings
+            print_str = f'-' * 5 + ' Inferring subgroups ' + '-' * 5
+            print(print_str)
+            embeddings = compute_embeddings(embedding_loader, model)
+            # 2nd do dim reduction
+            n_components = 2
+            umap_seed = 42
+            
+            print(f'> Computing UMAP')
+            umap_embeddings, _ = compute_umap_embeddings(embeddings, 
+                                                         n_components=n_components,
+                                                         seed=umap_seed)
+            # Then save group predictions
+            dataset = embedding_loader.dataset
+            cluster_method = 'kmeans'
+            n_clusters = 2
+            save_dir = f'./group_predictions/{opt.dataset}'
+            save_name = f'{opt.model_name}-cm={cluster_method}-nc={n_clusters}-umap_nc={n_components}_s={umap_seed}-e={epoch}.npy'
+            
+            print(f'> Clustering groups')
+            pred_group_labels, prfs = compute_group_labels(umap_embeddings,
+                                                           embedding_loader,
+                                                           cluster_method,
+                                                           n_clusters,
+                                                           save_name,
+                                                           save_dir=save_dir,
+                                                           verbose=True,
+                                                           norm_cost_matrix=True,
+                                                           save=True,
+                                                           seed=umap_seed)
+            model.train()
+            model = model.to(opt.device)
 
     # save the last model
     save_file = os.path.join(

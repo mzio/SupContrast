@@ -50,7 +50,7 @@ def parse_option():
     # model dataset
     parser.add_argument('--model', type=str, default='resnet50')
     parser.add_argument('--dataset', type=str, default='cifar10',
-                        choices=['cifar10', 'cifar100'], help='dataset')
+                        choices=['cifar10', 'cifar100', 'waterbirds'], help='dataset')
 
     # other setting
     parser.add_argument('--cosine', action='store_true',
@@ -89,11 +89,16 @@ def parse_option():
                     1 + math.cos(math.pi * opt.warm_epochs / opt.epochs)) / 2
         else:
             opt.warmup_to = opt.learning_rate
+            
+    opt.topk = (1, 5)
 
     if opt.dataset == 'cifar10':
         opt.n_cls = 10
     elif opt.dataset == 'cifar100':
         opt.n_cls = 100
+    elif opt.dataset == 'waterbirds':
+        opt.n_cls = 2
+        opt.topk = (1, 1)  # HACK
     else:
         raise ValueError('dataset not supported: {}'.format(opt.dataset))
 
@@ -139,7 +144,11 @@ def train(train_loader, model, classifier, criterion, optimizer, epoch, opt):
     top1 = AverageMeter()
 
     end = time.time()
-    for idx, (images, labels) in enumerate(train_loader):
+    for idx, data in enumerate(train_loader):
+        if opt.dataset == 'waterbirds':
+            images, labels, dataset_idxs = data
+        else:
+            images, labels = data
         data_time.update(time.time() - end)
 
         images = images.cuda(non_blocking=True)
@@ -157,7 +166,7 @@ def train(train_loader, model, classifier, criterion, optimizer, epoch, opt):
 
         # update metric
         losses.update(loss.item(), bsz)
-        acc1, acc5 = accuracy(output, labels, topk=(1, 5))
+        acc1, acc5 = accuracy(output, labels, topk=opt.topk)
         top1.update(acc1[0], bsz)
 
         # SGD
@@ -194,7 +203,11 @@ def validate(val_loader, model, classifier, criterion, opt):
 
     with torch.no_grad():
         end = time.time()
-        for idx, (images, labels) in enumerate(val_loader):
+        for idx, data in enumerate(val_loader):
+            if opt.dataset == 'waterbirds':
+                images, labels, dataset_idxs = data
+            else:
+                images, labels = data
             images = images.float().cuda()
             labels = labels.cuda()
             bsz = labels.shape[0]
@@ -205,7 +218,7 @@ def validate(val_loader, model, classifier, criterion, opt):
 
             # update metric
             losses.update(loss.item(), bsz)
-            acc1, acc5 = accuracy(output, labels, topk=(1, 5))
+            acc1, acc5 = accuracy(output, labels, topk=opt.topk)
             top1.update(acc1[0], bsz)
 
             # measure elapsed time

@@ -1,7 +1,31 @@
-# SupContrast: Supervised Contrastive Learning
-<p align="center">
-  <img src="figures/teaser.png" width="700">
-</p>
+# SupContrast: Supervised Contrastive Learning Commands
+
+Example commands for ISIC and CelebA:
+```
+# ISIC
+python main_group_inference.py --batch_size 16 --learning_rate 5e-4 --temp 0.1 --cosine --dataset isic --method LSpread --a_lc 1.0 --a_spread 1.0 --trial 1 --weight_decay 1e-3
+
+python main_group_inference.py --batch_size 4 --learning_rate 5e-4 --temp 0.1 --cosine --dataset isic --method LSpread --a_lc 1.0 --a_spread 1.0 --trial 1 --weight_decay 1e-3
+
+Hparam sweep:
+lr: [1e-3, 5e-4]
+wd: [1e-3]
+
+# CelebA
+
+python main_group_inference.py --batch_size 128  --learning_rate 1e-4 --temp 0.1 --cosine --dataset celebA --method LSpread --a_lc 1.0 --a_spread 1.0 --trial 1 --weight_decay 1e-4
+
+python main_group_inference.py --batch_size 128  --learning_rate 1e-5 --temp 0.1 --cosine --dataset celebA --method LSpread --a_lc 1.0 --a_spread 1.0 --trial 1 --weight_decay 1e-1
+
+Hparam sweep:
+lr: [1e-4, 1e-5]
+wd: [1e-4, 1e-1]
+```
+
+
+
+
+
 
 This repo covers an reference implementation for the following papers in PyTorch, using CIFAR as an illustrative example:  
 (1) Supervised Contrastive Learning. [Paper](https://arxiv.org/abs/2004.11362)  

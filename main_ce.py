@@ -16,6 +16,9 @@ from util import adjust_learning_rate, warmup_learning_rate, accuracy
 from util import set_optimizer, save_model
 from networks.resnet_big import SupCEResNet
 
+import numpy as np
+from datasets.waterbirds import load_waterbirds
+
 try:
     import apex
     from apex import amp, optimizers
@@ -52,7 +55,7 @@ def parse_option():
     # model dataset
     parser.add_argument('--model', type=str, default='resnet50')
     parser.add_argument('--dataset', type=str, default='cifar10',
-                        choices=['cifar10', 'cifar100'], help='dataset')
+                        choices=['cifar10', 'cifar100', 'waterbirds'], help='dataset')
 
     # other setting
     parser.add_argument('--cosine', action='store_true',
@@ -109,6 +112,8 @@ def parse_option():
         opt.n_cls = 10
     elif opt.dataset == 'cifar100':
         opt.n_cls = 100
+    elif opt.dataset == 'waterbirds':
+        opt.n_cls = 2
     else:
         raise ValueError('dataset not supported: {}'.format(opt.dataset))
 
@@ -123,6 +128,9 @@ def set_loader(opt):
     elif opt.dataset == 'cifar100':
         mean = (0.5071, 0.4867, 0.4408)
         std = (0.2675, 0.2565, 0.2761)
+    elif opt.dataset == 'waterbirds':
+        mean = (0.485, 0.456, 0.406)
+        std = (0.229, 0.224, 0.225)
     else:
         raise ValueError('dataset not supported: {}'.format(opt.dataset))
     normalize = transforms.Normalize(mean=mean, std=std)
@@ -138,8 +146,63 @@ def set_loader(opt):
         transforms.ToTensor(),
         normalize,
     ])
+    
+    # 9/7/21 - MZ hacks (START)
+    if opt.dataset == 'waterbirds':
+        args = opt
+        args.root_dir = '../slice-and-dice-smol/datasets/data/Waterbirds/'
+        # args.root_dir = './datasets/data/Waterbirds/'
+        args.target_name = 'waterbird_complete95'
+        args.confounder_names = ['forest2water2']
+        args.image_mean = np.mean([0.485, 0.456, 0.406])
+        args.image_std = np.mean([0.229, 0.224, 0.225])
+        args.augment_data = True
+        args.train_classes = ['landbirds', 'waterbirds']
+        if args.dataset == 'waterbirds_r':
+            args.train_classes = ['land', 'water']
+            
+        # Model
+        args.arch = args.model
+        args.bs_trn = args.batch_size
+        args.bs_val = args.batch_size
+            
+        # Modified train_transform()
+        # - No color jitter or grayscaling
+        target_resolution = (224, 224)
+        # Size?
+        target_resolution = (32, 32)
+        train_transform = transforms.Compose([
+            transforms.RandomResizedCrop(
+                size=target_resolution, 
+                scale=(0.7, 1.)),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            normalize,
+        ])
+        
+        scale = 1 # 256.0 / target_resolution[0]
+        eval_transform = transforms.Compose([
+            transforms.Resize(
+                (int(target_resolution[0] * scale), int(target_resolution[1] * scale))),
+            transforms.CenterCrop(target_resolution),
+            transforms.ToTensor(),
+            normalize,
+        ])
+            
+        loaders = load_waterbirds(args,
+                                  train_shuffle=True,
+                                  train_transform=train_transform,
+                                  eval_transform=eval_transform)
+        
+        train_loader, val_loader, test_loader = loaders
+        
+        return train_loader, val_loader
+            
+        
+        
+    # 9/7/21 - MZ hacks (END)
 
-    if opt.dataset == 'cifar10':
+    elif opt.dataset == 'cifar10':
         train_dataset = datasets.CIFAR10(root=opt.data_folder,
                                          transform=train_transform,
                                          download=True)
@@ -195,7 +258,12 @@ def train(train_loader, model, criterion, optimizer, epoch, opt):
     top1 = AverageMeter()
 
     end = time.time()
-    for idx, (images, labels) in enumerate(train_loader):
+    for idx, data in enumerate(train_loader):
+        if opt.dataset == 'waterbirds':
+            images, labels, dataset_idxs = data
+        else:
+            images, labels = data
+        
         data_time.update(time.time() - end)
 
         images = images.cuda(non_blocking=True)
@@ -247,7 +315,11 @@ def validate(val_loader, model, criterion, opt):
 
     with torch.no_grad():
         end = time.time()
-        for idx, (images, labels) in enumerate(val_loader):
+        for idx, data in enumerate(val_loader):
+            if opt.dataset == 'waterbirds':
+                images, labels, dataset_idxs = data
+            else:
+                images, labels = data
             images = images.float().cuda()
             labels = labels.cuda()
             bsz = labels.shape[0]
