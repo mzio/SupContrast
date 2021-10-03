@@ -276,8 +276,8 @@ def set_loader(opt):
         # Modified train_transform()
         # - No color jitter or grayscaling
         train_transform = transforms.Compose([
+            transforms.RandomResizedCrop(size=orig_min_dim, scale=(0.7, 1.)),  # Added
             transforms.CenterCrop(orig_min_dim),
-            transforms.RandomResizedCrop(size=opt.size, scale=(0.7, 1.)),  # Added
             transforms.Resize(target_resolution),  
             transforms.RandomHorizontalFlip(),  # Added
             transforms.ToTensor(),
@@ -311,7 +311,7 @@ def set_loader(opt):
         
         # No additional augmentation
         transform_list = [
-            transforms.RandomResizedCrop(size=opt.size, scale=(0.7, 1.)),  # Added
+            transforms.RandomResizedCrop(size=ISICDataset.img_resolution, scale=(0.7, 1.)),  # Added
             transforms.Resize(ISICDataset.img_resolution),
             transforms.CenterCrop(ISICDataset.img_resolution),
             transforms.RandomHorizontalFlip(),  # Added
