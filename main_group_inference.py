@@ -246,7 +246,7 @@ def set_loader(opt):
         return train_loader, embedding_dataloader
     elif opt.dataset == 'celebA':
         args = opt
-        args.root_dir = '/dfs/scratch0/nims/CelebA/celeba/'  # <- Change to dataset location
+        args.root_dir = '/home/danfu/data'  # <- Change to dataset location
         # IMPORTANT - dataloader assumes that we have directory structure
         # in ./datasets/data/CelebA/ :
         # |-- list_attr_celeba.csv
@@ -534,13 +534,13 @@ def main():
             # 1st compute embeddings
             print_str = f'-' * 5 + ' Inferring subgroups ' + '-' * 5
             print(print_str)
-            embeddings = compute_embeddings(embedding_loader, model)
+            embeddings = compute_embeddings(embedding_loader, model, opt)
             # 2nd do dim reduction
             n_components = 2
             umap_seed = 42
             
             print(f'> Computing UMAP')
-            umap_embeddings, _ = compute_umap_embeddings(embeddings, 
+            umap_embeddings, all_indices = compute_umap_embeddings(embeddings, 
                                                          n_components=n_components,
                                                          seed=umap_seed)
             # Then save group predictions
@@ -552,6 +552,7 @@ def main():
             
             print(f'> Clustering groups')
             pred_group_labels, prfs = compute_group_labels(umap_embeddings,
+                                                           all_indices,
                                                            embedding_loader,
                                                            cluster_method,
                                                            n_clusters,

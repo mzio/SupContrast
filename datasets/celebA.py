@@ -49,8 +49,8 @@ class CelebA(Dataset):
                 f'{self.data_dir} does not exist yet. Please generate the dataset first.')
 
         # Read in metadata
-        self.metadata_df = pd.read_csv(os.path.join(self.data_dir, 'list_attr_celeba.csv'), delim_whitespace=True)
-        self.split_df = pd.read_csv(os.path.join(self.data_dir, 'list_eval_partition.csv'), delim_whitespace=True)
+        self.metadata_df = pd.read_csv(os.path.join(self.data_dir, 'list_attr_celeba.csv'), delim_whitespace=False)
+        self.split_df = pd.read_csv(os.path.join(self.data_dir, 'list_eval_partition.csv'), delim_whitespace=False)
         # Filter for data split ('train', 'val', 'test')
         self.metadata_df['partition'] = self.split_df['partition']
         self.metadata_df = self.metadata_df[
