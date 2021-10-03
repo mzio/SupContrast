@@ -208,7 +208,7 @@ def set_loader(opt):
     # 9/7/21 - MZ hacks (START)
     if opt.dataset == 'waterbirds':
         args = opt
-        args.root_dir = '../slice-and-dice-smol/datasets/data/Waterbirds/'  # <- Change to dataset location
+        args.root_dir = '/raid/danfu/data'  # <- Change to dataset location
         args.target_name = 'waterbird_complete95'
         args.confounder_names = ['forest2water2']
         args.image_mean = np.mean([0.485, 0.456, 0.406])
@@ -246,7 +246,7 @@ def set_loader(opt):
         return train_loader, embedding_dataloader
     elif opt.dataset == 'celebA':
         args = opt
-        args.root_dir = '/dfs/scratch0/nims/CelebA/celeba/'  # <- Change to dataset location
+        args.root_dir = '/raid/danfu/data/celeba'  # <- Change to dataset location
         # IMPORTANT - dataloader assumes that we have directory structure
         # in ./datasets/data/CelebA/ :
         # |-- list_attr_celeba.csv
@@ -296,7 +296,7 @@ def set_loader(opt):
     
     elif opt.dataset == 'isic':
         args = opt
-        args.root_dir = '../slice-and-dice-smol/datasets/data/ISIC/'  # <- Change to dataset location
+        args.root_dir = '/raid/danfu/data/isic_data'  # <- Change to dataset location
         args.target_name = 'benign_malignant'
         args.confounder_names = ['patch']
         args.image_mean = np.mean([0.71826, 0.56291, 0.52548])
@@ -311,7 +311,7 @@ def set_loader(opt):
         
         # No additional augmentation
         transform_list = [
-            transforms.RandomResizedCrop(size=opt.size, scale=(0.7, 1.)),  # Added
+            transforms.RandomResizedCrop(ISICDataset.img_resolution, scale=(0.7, 1.)),  # Added
             transforms.Resize(ISICDataset.img_resolution),
             transforms.CenterCrop(ISICDataset.img_resolution),
             transforms.RandomHorizontalFlip(),  # Added
@@ -534,13 +534,13 @@ def main():
             # 1st compute embeddings
             print_str = f'-' * 5 + ' Inferring subgroups ' + '-' * 5
             print(print_str)
-            embeddings = compute_embeddings(embedding_loader, model)
+            embeddings = compute_embeddings(embedding_loader, model, opt)
             # 2nd do dim reduction
             n_components = 2
             umap_seed = 42
             
             print(f'> Computing UMAP')
-            umap_embeddings, _ = compute_umap_embeddings(embeddings, 
+            umap_embeddings, all_indices = compute_umap_embeddings(embeddings, 
                                                          n_components=n_components,
                                                          seed=umap_seed)
             # Then save group predictions
@@ -552,6 +552,7 @@ def main():
             
             print(f'> Clustering groups')
             pred_group_labels, prfs = compute_group_labels(umap_embeddings,
+                                                           all_indices,
                                                            embedding_loader,
                                                            cluster_method,
                                                            n_clusters,
