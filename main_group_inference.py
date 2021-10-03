@@ -276,8 +276,8 @@ def set_loader(opt):
         # Modified train_transform()
         # - No color jitter or grayscaling
         train_transform = transforms.Compose([
+            transforms.RandomResizedCrop(size=orig_min_dim, scale=(0.7, 1.)),  # Added
             transforms.CenterCrop(orig_min_dim),
-            transforms.RandomResizedCrop(size=opt.size, scale=(0.7, 1.)),  # Added
             transforms.Resize(target_resolution),  
             transforms.RandomHorizontalFlip(),  # Added
             transforms.ToTensor(),
@@ -311,7 +311,7 @@ def set_loader(opt):
         
         # No additional augmentation
         transform_list = [
-            transforms.RandomResizedCrop(ISICDataset.img_resolution, scale=(0.7, 1.)),  # Added
+            transforms.RandomResizedCrop(size=ISICDataset.img_resolution, scale=(0.7, 1.)),  # Added
             transforms.Resize(ISICDataset.img_resolution),
             transforms.CenterCrop(ISICDataset.img_resolution),
             transforms.RandomHorizontalFlip(),  # Added
@@ -548,7 +548,7 @@ def main():
             cluster_method = 'kmeans'
             n_clusters = 2
             save_dir = f'./group_predictions/{opt.dataset}'
-            save_name = f'{opt.model_name}-cm={cluster_method}-nc={n_clusters}-umap_nc={n_components}_s={umap_seed}-e={epoch}.npy'
+            save_name = f'{opt.model_name}-cm={cluster_method}-nc={n_clusters}-umap_nc={n_components}_s={umap_seed}-e={epoch}'
             
             print(f'> Clustering groups')
             pred_group_labels, prfs = compute_group_labels(umap_embeddings,
