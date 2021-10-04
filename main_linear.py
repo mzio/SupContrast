@@ -8,11 +8,17 @@ import math
 import torch
 import torch.backends.cudnn as cudnn
 
-from main_ce import set_loader
+# from main_ce import set_loader
 from util import AverageMeter
 from util import adjust_learning_rate, warmup_learning_rate, accuracy
 from util import set_optimizer
 from networks.resnet_big import SupConResNet, LinearClassifier
+
+# New imports
+## Data
+from datasets.waterbirds import load_waterbirds
+from datasets.celebA import load_celeba, CelebA
+from datasets.isic import load_isic, get_transform_ISIC, ISICDataset
 
 try:
     import apex
@@ -104,6 +110,216 @@ def parse_option():
 
     return opt
 
+def set_loader(opt):
+    # construct data loader
+    if opt.dataset == 'cifar10':
+        mean = (0.4914, 0.4822, 0.4465)
+        std = (0.2023, 0.1994, 0.2010)
+    elif opt.dataset == 'cifar100':
+        mean = (0.5071, 0.4867, 0.4408)
+        std = (0.2675, 0.2565, 0.2761)
+    elif opt.dataset == 'waterbirds':
+        mean = np.mean([0.485, 0.456, 0.406]),
+        std = np.mean([0.229, 0.224, 0.225])
+    elif opt.dataset == 'celebA':
+        mean = (0.485, 0.456, 0.406)
+        std = (0.229, 0.224, 0.225)
+    elif opt.dataset == 'isic':
+        mean = (0.71826, 0.56291, 0.52548)
+        std = (0.16318, 0.14502, 0.17271)
+    elif opt.dataset == 'path':
+        mean = eval(opt.mean)
+        std = eval(opt.std)
+    else:
+        raise ValueError('dataset not supported: {}'.format(opt.dataset))
+    normalize = transforms.Normalize(mean=mean, std=std)
+
+    train_transform = transforms.Compose([
+        transforms.RandomResizedCrop(size=opt.size, scale=(0.2, 1.)),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomApply([
+            transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)
+        ], p=0.8),
+        transforms.RandomGrayscale(p=0.2),
+        transforms.ToTensor(),
+        normalize,
+    ])
+    
+    # 9/7/21 - MZ hacks (START)
+    if opt.dataset == 'waterbirds':
+        args = opt
+        args.root_dir = '../slice-and-dice-smol/datasets/data/Waterbirds/'  # <- Change to dataset location
+        args.target_name = 'waterbird_complete95'
+        args.confounder_names = ['forest2water2']
+        args.image_mean = np.mean([0.485, 0.456, 0.406])
+        args.image_std = np.mean([0.229, 0.224, 0.225])
+        args.augment_data = False
+        args.train_classes = ['landbirds', 'waterbirds']
+        if args.dataset == 'waterbirds_r':
+            args.train_classes = ['land', 'water']
+            
+        # Model
+        args.arch = args.model
+        args.bs_trn = args.batch_size
+        args.bs_val = args.batch_size
+            
+        # Modified train_transform()
+        # - No color jitter or grayscaling
+        target_resolution = (224, 224)
+        # Size?
+        target_resolution = (32, 32)
+        train_transform = transforms.Compose([
+            transforms.RandomResizedCrop(
+                size=target_resolution, 
+                scale=(0.7, 1.)),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            normalize,
+        ])
+        
+        scale = 1 # 256.0 / target_resolution[0]
+        
+        eval_transform = transforms.Compose([
+            transforms.Resize(
+                size=target_resolution),
+            transforms.CenterCrop(target_resolution),
+            transforms.ToTensor(),
+            normalize,
+        ])
+            
+        train_loader, val_loader, test_loader = load_waterbirds(args,
+                                             train_shuffle=True,
+                                             train_transform=train_transform,
+                                             eval_transform=eval_transform)
+        
+        return train_loader, test_loader
+    elif opt.dataset == 'celebA':
+        args = opt
+        args.root_dir = '/home/danfu/data'  # <- Change to dataset location
+        # IMPORTANT - dataloader assumes that we have directory structure
+        # in ./datasets/data/CelebA/ :
+        # |-- list_attr_celeba.csv
+        # |-- list_eval_partition.csv
+        # |-- img_align_celeba/
+        #     |-- image1.png
+        #     |-- ...
+        #     |-- imageN.png
+        args.target_name = 'Blond_Hair'
+        args.confounder_names = ['Male']
+        args.image_mean = np.mean([0.485, 0.456, 0.406])
+        args.image_std = np.mean([0.229, 0.224, 0.225])
+        args.augment_data = False
+        args.image_path = './images/celebA/'
+        args.train_classes = ['blond', 'nonblond']
+        args.val_split = 0.2
+        
+        args.arch = args.model
+        args.bs_trn = args.batch_size
+        args.bs_val = args.batch_size
+        
+        orig_w = 178
+        orig_h = 218
+        orig_min_dim = min(orig_w, orig_h)
+        target_resolution = (224, 224)
+
+        # Modified train_transform()
+        # - No color jitter or grayscaling
+        train_transform = transforms.Compose([
+            transforms.RandomResizedCrop(size=orig_min_dim, scale=(0.7, 1.)),  # Added
+            transforms.CenterCrop(orig_min_dim),
+            transforms.Resize(target_resolution),  
+            transforms.RandomHorizontalFlip(),  # Added
+            transforms.ToTensor(),
+            transforms.Normalize(mean=CelebA._normalization_stats['mean'],
+                                 std=CelebA._normalization_stats['std']),
+        ])
+        
+        eval_transform = transforms.Compose([
+            transforms.CenterCrop(orig_min_dim),
+            transforms.Resize(target_resolution),  
+            transforms.ToTensor(),
+            transforms.Normalize(mean=CelebA._normalization_stats['mean'],
+                                 std=CelebA._normalization_stats['std']),
+        ])
+        
+        # load_celeba(args, train_shuffle=True, transform=None)
+        train_loader, val_loader, test_loader = load_celeba(args,
+                                         train_shuffle=True,
+                                         train_transform=train_transform,
+                                         eval_transform=eval_transform)
+        
+        return train_loader, test_loader
+    
+    elif opt.dataset == 'isic':
+        args = opt
+        args.root_dir = '../slice-and-dice-smol/datasets/data/ISIC/'  # <- Change to dataset location
+        args.target_name = 'benign_malignant'
+        args.confounder_names = ['patch']
+        args.image_mean = np.mean([0.71826, 0.56291, 0.52548])
+        args.image_std = np.mean([0.16318, 0.14502, 0.17271])
+        args.augment_data = False
+        args.image_path = './images/isic/'
+        args.train_classes = ['benign', 'malignant']
+        
+        args.arch = args.model
+        args.bs_trn = args.batch_size
+        args.bs_val = args.batch_size
+        
+        # No additional augmentation
+        transform_list = [
+            transforms.RandomResizedCrop(size=ISICDataset.img_resolution, scale=(0.7, 1.)),  # Added
+            transforms.Resize(ISICDataset.img_resolution),
+            transforms.CenterCrop(ISICDataset.img_resolution),
+            transforms.RandomHorizontalFlip(),  # Added
+            transforms.RandomVerticalFlip(),  # Added
+            transforms.ToTensor(),
+            transforms.Normalize(mean=ISICDataset.img_norm['mean'],
+                                 std=ISICDataset.img_norm['std'])
+        ]
+        transform = transforms.Compose(transform_list)
+        
+        test_transform_list = [
+            transforms.Resize(ISICDataset.img_resolution),
+            transforms.CenterCrop(ISICDataset.img_resolution),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=ISICDataset.img_norm['mean'],
+                                 std=ISICDataset.img_norm['std'])
+        ]
+        test_transform = transforms.Compose(test_transform_list)
+        
+        # load_isic(args, task_names=['patch'], train_shuffle=True, 
+        #           augment=False, autoaugment=False)
+        train_loader, val_loader, test_loader = load_isic(args,
+                                       train_shuffle=True,
+                                       train_transform=transform,
+                                       eval_transform=transform)
+        
+        return train_loader, test_loader
+        
+        
+        
+    # 9/7/21 - MZ hacks (END)
+
+    elif opt.dataset == 'cifar10':
+        train_dataset = torchvision.datasets.CIFAR10(root=opt.data_folder,
+                                         transform=TwoCropTransform(train_transform),
+                                         download=True)
+    elif opt.dataset == 'cifar100':
+        train_dataset = torchvision.datasets.CIFAR100(root=opt.data_folder,
+                                          transform=TwoCropTransform(train_transform),
+                                          download=True)
+    elif opt.dataset == 'path':
+        train_dataset = torchvision.datasets.ImageFolder(root=opt.data_folder,
+                                             transform=TwoCropTransform(train_transform))
+    else:
+        raise ValueError(opt.dataset)
+
+    train_sampler = None
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=opt.batch_size, shuffle=(train_sampler is None),
+        num_workers=opt.num_workers, pin_memory=True, sampler=train_sampler)
+
+    return train_loader
 
 def set_model(opt):
     model = SupConResNet(name=opt.model)
