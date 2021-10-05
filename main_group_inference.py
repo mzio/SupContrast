@@ -26,6 +26,7 @@ from losses import SupConLoss, LabeledContrastiveLoss
 from datasets.waterbirds import load_waterbirds
 from datasets.celebA import load_celeba, CelebA
 from datasets.isic import load_isic, get_transform_ISIC, ISICDataset
+from datasets.umnist import load_umnist, MNISTDataset
 
 ## Computing embeddings, clustering, inferring groups
 from embeddings import compute_umap_embeddings, compute_embeddings
@@ -68,7 +69,7 @@ def parse_option():
     # model dataset
     parser.add_argument('--model', type=str, default='resnet50')
     parser.add_argument('--dataset', type=str, default='cifar10',
-                        choices=['cifar10', 'cifar100', 'path', 
+                        choices=['cifar10', 'cifar100', 'path', 'umnist', 
                                  'waterbirds', 'celebA', 'isic'], help='dataset')
     parser.add_argument('--mean', type=str, help='mean of dataset in path in form of str tuple')
     parser.add_argument('--std', type=str, help='std of dataset in path in form of str tuple')
@@ -190,8 +191,11 @@ def set_loader(opt):
     elif opt.dataset == 'path':
         mean = eval(opt.mean)
         std = eval(opt.std)
+    elif opt.dataset == 'umnist':
+        pass
     else:
         raise ValueError('dataset not supported: {}'.format(opt.dataset))
+    """
     normalize = transforms.Normalize(mean=mean, std=std)
 
     train_transform = transforms.Compose([
@@ -204,8 +208,9 @@ def set_loader(opt):
         transforms.ToTensor(),
         normalize,
     ])
+    """
     
-    # 9/7/21 - MZ hacks (START)
+    # 10/4/21 - MZ hacks (START)
     if opt.dataset == 'waterbirds':
         args = opt
         args.root_dir = '/raid/danfu/data'  # <- Change to dataset location
@@ -342,10 +347,54 @@ def set_loader(opt):
                                            train_transform=test_transform)
         
         return train_loader, embedding_loader
+    
+    elif opt.dataset == 'umnist':
+        args = opt
+        resize = False  # Depends on the model - Set to true if your model expects input images to be 32x32 rather than 28x28
+        args.root_dir = './data/umnist'  # <- Change to dataset location
+        if not os.path.isdir(args.root_dir):
+            os.makedirs(args.root_dir)
+            
+        GROUP_PREDS_PATH = './group_predictions/umnist'
+        if not os.path.isdir(GROUP_PREDS_PATH):
+            os.makedirs(GROUP_PREDS_PATH)
+        
+        args.target_name = 'digit'
+        args.confounder_names = ['eight']
+        
+        args.arch = args.model
+        args.bs_trn = args.batch_size
+        args.bs_val = args.batch_size
+        
+        test_transform_list = [
+            transforms.ToTensor(),
+            transforms.Normalize(**MNISTDataset._normalization_stats)
+        ]
+        if resize:  # # 
+            test_transform_list.insert(0, transforms.Resize((32, 32)))
+            
+        test_transform = transforms.Compose(test_transform_list)
+            
+        train_transform_list = [
+            transforms.RandomCrop(MNISTDataset._resolution, padding=4),
+            transforms.RandomHorizontalFlip()
+        ] + test_transform_list
+        
+        train_transform = transforms.Compose(train_transform_list)
+        
+        train_loader, _, _ = load_umnist(args,
+                                        train_shuffle=True,
+                                        transform=TwoCropTransform(train_transform),
+                                        eval_transform=test_transform)
+        embedding_loader, _, _ = load_umnist(args,
+                                            train_shuffle=False,
+                                            transform=test_transform,
+                                            eval_transform=test_transform)
+        
+        return train_loader, embedding_loader
         
         
-        
-    # 9/7/21 - MZ hacks (END)
+    # 10/4/21 - MZ hacks (END)
 
     elif opt.dataset == 'cifar10':
         train_dataset = torchvision.datasets.CIFAR10(root=opt.data_folder,
@@ -404,10 +453,13 @@ def train(train_loader, model, criterion, optimizer, epoch, opt, embedding_loade
 
     end = time.time()
     for idx, data in enumerate(train_loader):
-        if opt.dataset in ['waterbirds', 'isic', 'celebA']:
+        if opt.dataset in ['waterbirds', 'isic', 'celebA', 'umnist']:
             images, labels, dataset_idxs = data
         else:
-            images, labels = data
+            try:
+                images, labels = data
+            except ValueError:
+                images, labels, dataset_idxs = data
         data_time.update(time.time() - end)
 
         images = torch.cat([images[0], images[1]], dim=0)

@@ -4,6 +4,14 @@ Example commands for ISIC and CelebA:
 
 Number of epochs may need to be tuned? It's just the same number for training an ERM model right now.
 ```
+# UMNIST
+python main_group_inference.py --batch_size 128 --learning_rate 2e-3 --temp 0.1 --cosine --dataset umnist --method LSpread --a_lc 1.0 --a_spread 1.0 --trial 1 --weight_decay 1e-5 --epochs 100
+
+python main_group_inference.py --batch_size 128 --learning_rate 2e-3 --temp 0.1 --cosine --dataset umnist --method SupCon --a_lc 1.0 --a_spread 1.0 --trial 1 --weight_decay 1e-5 --epochs 100
+
+python main_group_inference.py --batch_size 128 --learning_rate 2e-3 --temp 0.1 --cosine --dataset umnist --method SimCLR --a_lc 1.0 --a_spread 1.0 --trial 1 --weight_decay 1e-5 --epochs 100
+
+
 # ISIC
 python main_group_inference.py --batch_size 16 --learning_rate 1e-3 --temp 0.1 --cosine --dataset isic --method LSpread --a_lc 1.0 --a_spread 1.0 --trial 1 --weight_decay 1e-3 --save_freq 5 --epochs 20
 
