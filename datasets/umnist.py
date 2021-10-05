@@ -69,7 +69,7 @@ class MNISTDataset(Dataset):
                 logging.info(np.bincount(original_labels))
             except NameError:
                 pass
-
+        
         # Superclasses: <= 4 and > 4
         superclass_labels = (original_labels > 4).long()
 
@@ -113,6 +113,8 @@ class MNISTDataset(Dataset):
         if self.transform is not None:
             image = self.transform(image)
         x = image
+
+
         y_dict = {k: v[idx] for k, v in self.Y_dict.items()}
 
         return x, y_dict["superclass"], idx

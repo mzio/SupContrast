@@ -7,6 +7,8 @@ import math
 
 import torch
 import torch.backends.cudnn as cudnn
+from torchvision import transforms
+import numpy as np
 
 # from main_ce import set_loader
 from util import AverageMeter
@@ -19,6 +21,8 @@ from networks.resnet_big import SupConResNet, LinearClassifier
 from datasets.waterbirds import load_waterbirds
 from datasets.celebA import load_celeba, CelebA
 from datasets.isic import load_isic, get_transform_ISIC, ISICDataset
+
+from sklearn.metrics import roc_auc_score
 
 try:
     import apex
@@ -56,7 +60,7 @@ def parse_option():
     # model dataset
     parser.add_argument('--model', type=str, default='resnet50')
     parser.add_argument('--dataset', type=str, default='cifar10',
-                        choices=['cifar10', 'cifar100', 'waterbirds'], help='dataset')
+                        choices=['cifar10', 'cifar100', 'waterbirds', 'isic', 'celebA'], help='dataset')
 
     # other setting
     parser.add_argument('--cosine', action='store_true',
@@ -105,6 +109,12 @@ def parse_option():
     elif opt.dataset == 'waterbirds':
         opt.n_cls = 2
         opt.topk = (1, 1)  # HACK
+    elif opt.dataset == 'isic':
+        opt.n_cls=2
+        opt.topk = (1, 1)  # HACK
+    elif opt.dataset == 'celebA':
+        opt.n_cls=2
+        opt.topk = (1, 1)  # HACK
     else:
         raise ValueError('dataset not supported: {}'.format(opt.dataset))
 
@@ -134,21 +144,21 @@ def set_loader(opt):
         raise ValueError('dataset not supported: {}'.format(opt.dataset))
     normalize = transforms.Normalize(mean=mean, std=std)
 
-    train_transform = transforms.Compose([
-        transforms.RandomResizedCrop(size=opt.size, scale=(0.2, 1.)),
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomApply([
-            transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)
-        ], p=0.8),
-        transforms.RandomGrayscale(p=0.2),
-        transforms.ToTensor(),
-        normalize,
-    ])
+    # train_transform = transforms.Compose([
+    #     transforms.RandomResizedCrop(size=opt.size, scale=(0.2, 1.)),
+    #     transforms.RandomHorizontalFlip(),
+    #     transforms.RandomApply([
+    #         transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)
+    #     ], p=0.8),
+    #     transforms.RandomGrayscale(p=0.2),
+    #     transforms.ToTensor(),
+    #     normalize,
+    # ])
     
     # 9/7/21 - MZ hacks (START)
     if opt.dataset == 'waterbirds':
         args = opt
-        args.root_dir = '../slice-and-dice-smol/datasets/data/Waterbirds/'  # <- Change to dataset location
+        args.root_dir = '/raid/danfu/data'  # <- Change to dataset location
         args.target_name = 'waterbird_complete95'
         args.confounder_names = ['forest2water2']
         args.image_mean = np.mean([0.485, 0.456, 0.406])
@@ -195,7 +205,7 @@ def set_loader(opt):
         return train_loader, test_loader
     elif opt.dataset == 'celebA':
         args = opt
-        args.root_dir = '/home/danfu/data'  # <- Change to dataset location
+        args.root_dir = '/raid/danfu/data/celeba'  # <- Change to dataset location
         # IMPORTANT - dataloader assumes that we have directory structure
         # in ./datasets/data/CelebA/ :
         # |-- list_attr_celeba.csv
@@ -252,7 +262,7 @@ def set_loader(opt):
     
     elif opt.dataset == 'isic':
         args = opt
-        args.root_dir = '../slice-and-dice-smol/datasets/data/ISIC/'  # <- Change to dataset location
+        args.root_dir = '/raid/danfu/data/isic_data'  # <- Change to dataset location
         args.target_name = 'benign_malignant'
         args.confounder_names = ['patch']
         args.image_mean = np.mean([0.71826, 0.56291, 0.52548])
@@ -361,7 +371,7 @@ def train(train_loader, model, classifier, criterion, optimizer, epoch, opt):
 
     end = time.time()
     for idx, data in enumerate(train_loader):
-        if opt.dataset == 'waterbirds':
+        if opt.dataset in ['waterbirds', 'isic', 'celebA']:
             images, labels, dataset_idxs = data
         else:
             images, labels = data
@@ -417,10 +427,13 @@ def validate(val_loader, model, classifier, criterion, opt):
     losses = AverageMeter()
     top1 = AverageMeter()
 
+    all_outputs = []
+    all_targets = []
+
     with torch.no_grad():
         end = time.time()
         for idx, data in enumerate(val_loader):
-            if opt.dataset == 'waterbirds':
+            if opt.dataset in ['waterbirds', 'isic', 'celebA']:
                 images, labels, dataset_idxs = data
             else:
                 images, labels = data
@@ -431,6 +444,9 @@ def validate(val_loader, model, classifier, criterion, opt):
             # forward
             output = classifier(model.encoder(images))
             loss = criterion(output, labels)
+
+            all_outputs += list(output.detach().cpu().numpy())
+            all_targets += list(labels.detach().cpu().numpy())
 
             # update metric
             losses.update(loss.item(), bsz)
@@ -450,6 +466,9 @@ def validate(val_loader, model, classifier, criterion, opt):
                        loss=losses, top1=top1))
 
     print(' * Acc@1 {top1.avg:.3f}'.format(top1=top1))
+    if max(all_targets) == 1:
+        print(roc_auc_score(all_targets, np.array(all_outputs)[:,1] ))
+    
     return losses.avg, top1.avg
 
 
