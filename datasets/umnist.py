@@ -73,6 +73,17 @@ class MNISTDataset(Dataset):
         # Superclasses: <= 4 and > 4
         superclass_labels = (original_labels > 4).long()
 
+        self.superclass_names = ['<=4', '>4']
+        self.targets = superclass_labels
+        self.n_classes = len(np.unique(superclass_labels))
+
+        self.subclass_names = ['<=4', '>4, not 8', '8']
+        self.subclass_map = {'0_0': 0, '1_0': 1, '1_1': 2}
+        self.group_array = np.copy(self.targets)
+        self.group_array[original_labels == 8] = 2
+        self.group_labels = np.copy(self.group_array)
+        self.targets_all = {'target': self.targets, 'group_idx': self.group_array}
+
         self.X = data
         self.Y_dict = {'superclass': superclass_labels, 'true_subclass': original_labels.clone()}
 

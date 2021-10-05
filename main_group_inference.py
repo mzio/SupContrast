@@ -351,7 +351,7 @@ def set_loader(opt):
     
     elif opt.dataset == 'umnist':
         args = opt
-        resize = False  # Depends on the model - Set to true if your model expects input images to be 32x32 rather than 28x28
+        resize = True  # Depends on the model - Set to true if your model expects input images to be 32x32 rather than 28x28
         args.root_dir = './data/umnist'  # <- Change to dataset location
         if not os.path.isdir(args.root_dir):
             os.makedirs(args.root_dir)
