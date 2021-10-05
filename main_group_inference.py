@@ -19,6 +19,7 @@ from util import TwoCropTransform, AverageMeter
 from util import adjust_learning_rate, warmup_learning_rate
 from util import set_optimizer, save_model
 from networks.resnet_big import SupConResNet
+from networks.lenet import SupConLeNet
 from losses import SupConLoss, LabeledContrastiveLoss
 
 # New imports
@@ -370,7 +371,10 @@ def set_loader(opt):
 
 
 def set_model(opt):
-    model = SupConResNet(name=opt.model)
+    if opt.model == 'lenet':
+        model = SupConLeNet()
+    else:
+        model = SupConResNet(name=opt.model)
     
     if opt.method == 'LSpread':
         criterion = LabeledContrastiveLoss(temp=opt.temp,
